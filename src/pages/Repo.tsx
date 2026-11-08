@@ -125,8 +125,8 @@ export default function RepoPage() {
 
       {tab === 'code' ? (
         <>
-          <ReadmeCard owner={owner} repo={repo} branch={detail.default_branch} />
           <FileBrowser owner={owner} repo={repo} branch={detail.default_branch} />
+          <ReadmeCard owner={owner} repo={repo} branch={detail.default_branch} />
         </>
       ) : (
         <CommitList owner={owner} repo={repo} />
