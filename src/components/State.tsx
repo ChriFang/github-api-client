@@ -27,6 +27,12 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
           ? `配额将在 ${formatDate(new Date(error.resetAt).toISOString())} 重置。`
           : '请稍后再试。';
         break;
+      case 'secondary-limit':
+        title = '请求过于频繁';
+        hint = error.resetAt
+          ? `GitHub 暂时限制了请求频率，${formatDate(new Date(error.resetAt).toISOString())} 后重试。`
+          : 'GitHub 暂时限制了请求频率，请等几分钟再试；下载大仓库时会逐文件请求，更容易触发。';
+        break;
       case 'network':
         title = '连不上 api.github.com';
         hint = '检查网络连接；如果你在中国大陆，GitHub 的连通性可能波动，稍后重试。';

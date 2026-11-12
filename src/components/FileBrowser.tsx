@@ -169,7 +169,7 @@ export default function FileBrowser({
 
       <section className="browser-view">
         {!selected ? (
-          <EmptyState title="选择左侧文件查看内容" hint="文件通过 Contents API 按需读取，不克隆整个仓库。" />
+          <EmptyState title="选择左侧文件查看内容" hint="文件通过 Contents API 按需读取；下载整个分支请用上方的「下载 ZIP」。" />
         ) : null}
 
         {selected && contentQuery.isLoading ? <Spinner label="读取文件…" /> : null}

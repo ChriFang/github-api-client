@@ -8,6 +8,7 @@ import { renderMarkdown } from '../lib/markdown';
 import FileBrowser from '../components/FileBrowser';
 import CommitList from '../components/CommitList';
 import RepoAddressMenu from '../components/RepoAddressMenu';
+import DownloadArchive from '../components/DownloadArchive';
 import { ErrorState, SkeletonList } from '../components/State';
 
 function ReadmeCard({ owner, repo, branch }: { owner: string; repo: string; branch: string }) {
@@ -60,6 +61,15 @@ export default function RepoPage() {
     staleTime: 60_000,
   });
 
+  const branch = repoQuery.data?.default_branch ?? '';
+  const treeQuery = useQuery({
+    queryKey: ['tree', owner, repo, branch],
+    queryFn: () => api.getTree(owner, repo, branch),
+    enabled: Boolean(owner && repo && branch),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+
   if (repoQuery.isLoading) return <SkeletonList rows={4} />;
   if (repoQuery.isError) return <ErrorState error={repoQuery.error} onRetry={() => repoQuery.refetch()} />;
   if (!repoQuery.data) return null;
@@ -83,6 +93,15 @@ export default function RepoPage() {
             {detail.private ? <span className="badge badge-private">私有</span> : null}
           </h1>
           <RepoAddressMenu repo={detail} />
+          <DownloadArchive
+            owner={owner}
+            repo={repo}
+            branch={detail.default_branch}
+            tree={treeQuery.data?.data}
+            treeLoading={treeQuery.isLoading}
+            treeError={treeQuery.isError ? treeQuery.error : null}
+            onRetryTree={() => void treeQuery.refetch()}
+          />
         </div>
 
         <p className="repo-desc">{detail.description?.trim() || '暂无描述'}</p>

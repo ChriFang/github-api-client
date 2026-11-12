@@ -19,6 +19,7 @@ const BASE_URL = (ENV?.VITE_API_BASE ?? 'https://api.github.com').replace(/\/+$/
 export type ErrorKind =
   | 'auth'
   | 'rate-limit'
+  | 'secondary-limit'
   | 'forbidden'
   | 'not-found'
   | 'validation'
@@ -122,6 +123,10 @@ interface RequestConfig {
   signal?: AbortSignal;
   token?: string | null;
   allow404?: boolean;
+  /** 覆盖默认的 Accept，例如 Blobs API 的原始二进制响应 */
+  accept?: string;
+  /** 二进制响应不解析 JSON，也不参与 ETag 缓存 */
+  responseType?: 'json' | 'binary';
 }
 
 const MAX_RETRIES = 2;
@@ -170,6 +175,13 @@ async function toError(response: Response): Promise<GitHubError> {
     return new GitHubError('rate-limit', 'API 配额已用完，请稍后再试', 403, { resetAt, details: body });
   }
   if (response.status === 403) {
+    const retryAfter = Number(response.headers.get('retry-after') ?? 0);
+    if (retryAfter > 0 || /secondary rate limit/i.test(message)) {
+      return new GitHubError('secondary-limit', '请求过于频繁，请稍后再试', 403, {
+        resetAt: retryAfter > 0 ? Date.now() + retryAfter * 1000 : undefined,
+        details: body,
+      });
+    }
     return new GitHubError('forbidden', `权限不足：${message}`, 403, { details: body });
   }
   if (response.status === 404) {
@@ -187,15 +199,16 @@ async function request<T>(path: string, config: RequestConfig = {}): Promise<Pag
   const token = config.token !== undefined ? config.token : authToken;
 
   for (let attempt = 0; ; attempt += 1) {
+    const binary = config.responseType === 'binary';
     const headers: Record<string, string> = {
-      Accept: 'application/vnd.github+json',
+      Accept: config.accept ?? 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
     };
     if (token) headers.Authorization = `Bearer ${token}`;
     if (config.body !== undefined) headers['Content-Type'] = 'application/json';
 
     const cached = etagCache.get(url);
-    if (method === 'GET' && cached) headers['If-None-Match'] = cached.etag;
+    if (method === 'GET' && cached && !binary) headers['If-None-Match'] = cached.etag;
 
     let response: Response;
     try {
@@ -235,9 +248,15 @@ async function request<T>(path: string, config: RequestConfig = {}): Promise<Pag
     }
 
     const nextPage = parseNextPage(response.headers.get('link'));
-    const data = (response.status === 204 ? undefined : await response.json()) as T;
+    const data = (
+      response.status === 204
+        ? undefined
+        : binary
+          ? new Uint8Array(await response.arrayBuffer())
+          : await response.json()
+    ) as T;
 
-    if (method === 'GET') {
+    if (method === 'GET' && !binary) {
       const etag = response.headers.get('etag');
       if (etag) rememberEtag(url, { etag, data, nextPage });
     }
@@ -284,6 +303,15 @@ export const api = {
 
   async getReadme(owner: string, repo: string): Promise<ContentFile> {
     const result = await request<ContentFile>(`/repos/${owner}/${repo}/readme`);
+    return result.data;
+  },
+
+  /** 以原始二进制读取 blob，用于打包下载，避免 base64 的 33% 体积放大 */
+  async getBlob(owner: string, repo: string, sha: string, signal?: AbortSignal): Promise<Uint8Array> {
+    const result = await request<Uint8Array>(
+      `/repos/${owner}/${repo}/git/blobs/${encodeURIComponent(sha)}`,
+      { accept: 'application/vnd.github.raw', responseType: 'binary', signal },
+    );
     return result.data;
   },
 

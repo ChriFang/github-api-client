@@ -95,11 +95,16 @@ const files = {
   'src/lib/api.ts': `const BASE_URL = 'https://api.github.com';\n\nexport async function request<T>(path: string): Promise<T> {\n  const res = await fetch(BASE_URL + path, { headers: { Accept: 'application/vnd.github+json' } });\n  if (!res.ok) throw new Error(String(res.status));\n  return (await res.json()) as T;\n}\n`,
   'docs/architecture.md': `# 架构\n\n三层：API 客户端 / Query 缓存 / 页面组件。\n`,
   '.github/workflows/ci.yml': `name: CI\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: npm ci && npm run build\n`,
+  'scripts/deploy.sh': `#!/bin/sh\nset -eu\necho "deploy"\n`,
+};
+
+const fileModes = {
+  'scripts/deploy.sh': '100755',
 };
 
 const tree = Object.keys(files).map((path, index) => ({
   path,
-  mode: '100644',
+  mode: fileModes[path] ?? '100644',
   type: 'blob',
   sha: `sha${index}`,
   size: Buffer.byteLength(files[path]),
@@ -212,6 +217,22 @@ createServer((req, res) => {
   }
   if (/^\/repos\/[^/]+\/[^/]+\/git\/trees\//.test(path)) {
     return send(res, 200, { sha: 'root', tree, truncated: false });
+  }
+  if (/^\/repos\/[^/]+\/[^/]+\/git\/blobs\/[^/]+$/.test(path)) {
+    const sha = path.split('/git/blobs/')[1];
+    const entry = tree.find((item) => item.type === 'blob' && item.sha === sha);
+    if (!entry) return send(res, 404, { message: 'Not Found' });
+    const content = Buffer.from(files[entry.path] ?? '', 'utf8');
+    res.writeHead(200, {
+      ...cors,
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': String(content.length),
+      'x-ratelimit-limit': '5000',
+      'x-ratelimit-remaining': '4321',
+      'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 3600),
+    });
+    res.end(content);
+    return;
   }
   if (/^\/repos\/[^/]+\/[^/]+\/contents\//.test(path)) {
     const filePath = path.split('/contents/')[1] ?? '';
