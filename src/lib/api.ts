@@ -6,6 +6,7 @@ import type {
   GitHubUser,
   RateLimitInfo,
   Repo,
+  RepoSearchResult,
   TreeResponse,
 } from './types';
 
@@ -19,6 +20,7 @@ const BASE_URL = (ENV?.VITE_API_BASE ?? 'https://api.github.com').replace(/\/+$/
 export type ErrorKind =
   | 'auth'
   | 'rate-limit'
+  | 'search-limit'
   | 'secondary-limit'
   | 'forbidden'
   | 'not-found'
@@ -91,6 +93,10 @@ export function subscribeRateLimit(listener: RateLimitListener): () => void {
 }
 
 function emitRateLimit(headers: Headers): void {
+  // 搜索接口有独立的 30 次/分钟配额，不能覆盖顶栏的核心配额显示
+  const resource = headers.get('x-ratelimit-resource');
+  if (resource && resource !== 'core') return;
+
   const limit = Number(headers.get('x-ratelimit-limit'));
   const remaining = Number(headers.get('x-ratelimit-remaining'));
   const reset = Number(headers.get('x-ratelimit-reset'));
@@ -172,6 +178,9 @@ async function toError(response: Response): Promise<GitHubError> {
     return new GitHubError('auth', 'Token 无效或已过期，请重新登录', 401, { details: body });
   }
   if (response.status === 403 && remaining === '0') {
+    if (response.headers.get('x-ratelimit-resource') === 'search') {
+      return new GitHubError('search-limit', '搜索配额已用完，请稍后再试', 403, { resetAt, details: body });
+    }
     return new GitHubError('rate-limit', 'API 配额已用完，请稍后再试', 403, { resetAt, details: body });
   }
   if (response.status === 403) {
@@ -290,6 +299,19 @@ export const api = {
       page: String(page),
     });
     return request<Repo[]>(`/user/repos?${query.toString()}`);
+  },
+
+  /**
+   * 搜索 GitHub 上的仓库（公开仓库 + 当前 Token 可访问的私有仓库）。
+   * 搜索有独立配额（认证 30 次/分钟），且最多只能翻到前 1000 条结果。
+   */
+  searchRepos(query: string, page: number, perPage = 30): Promise<Paged<RepoSearchResult>> {
+    const params = new URLSearchParams({
+      q: query,
+      per_page: String(perPage),
+      page: String(page),
+    });
+    return request<RepoSearchResult>(`/search/repositories?${params.toString()}`);
   },
 
   async getRepo(owner: string, repo: string): Promise<Repo> {

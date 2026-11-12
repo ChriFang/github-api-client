@@ -7,6 +7,7 @@ import LoginPage from './pages/Login';
 import ReposPage from './pages/Repos';
 import RepoPage from './pages/Repo';
 import NewRepoPage from './pages/NewRepo';
+import SearchPage from './pages/Search';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route element={<RequireAuth />}>
               <Route path="/" element={<ReposPage />} />
+              <Route path="/search" element={<SearchPage />} />
               <Route path="/new" element={<NewRepoPage />} />
               <Route path="/r/:owner/:repo" element={<RepoPage />} />
             </Route>

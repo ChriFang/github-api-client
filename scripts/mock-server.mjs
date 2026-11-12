@@ -64,6 +64,70 @@ const repos = [
   },
 ];
 
+/** 用于搜索 mock 的第三方公开仓库 */
+const publicRepos = [
+  {
+    ...repo,
+    id: 101,
+    name: 'vscode',
+    full_name: 'microsoft/vscode',
+    description: 'Visual Studio Code — 跨平台代码编辑器。',
+    language: 'TypeScript',
+    stargazers_count: 165_000,
+    forks_count: 29_000,
+    open_issues_count: 12_000,
+    size: 650_000,
+    default_branch: 'main',
+    owner: { login: 'microsoft', avatar_url: user.avatar_url },
+    pushed_at: new Date(Date.now() - 3600_000).toISOString(),
+  },
+  {
+    ...repo,
+    id: 102,
+    name: 'react',
+    full_name: 'facebook/react',
+    description: '用于构建用户界面的 JavaScript 库。',
+    language: 'JavaScript',
+    stargazers_count: 232_000,
+    forks_count: 47_000,
+    open_issues_count: 900,
+    size: 220_000,
+    default_branch: 'main',
+    owner: { login: 'facebook', avatar_url: user.avatar_url },
+    pushed_at: new Date(Date.now() - 7200_000).toISOString(),
+  },
+  {
+    ...repo,
+    id: 103,
+    name: 'next.js',
+    full_name: 'vercel/next.js',
+    description: 'The React Framework.',
+    language: 'JavaScript',
+    stargazers_count: 128_000,
+    forks_count: 27_000,
+    open_issues_count: 2_800,
+    size: 480_000,
+    default_branch: 'canary',
+    owner: { login: 'vercel', avatar_url: user.avatar_url },
+    pushed_at: new Date(Date.now() - 1800_000).toISOString(),
+  },
+  {
+    ...repo,
+    id: 104,
+    name: 'cli',
+    full_name: 'cli/cli',
+    description: "GitHub's official command line tool.",
+    language: 'Go',
+    stargazers_count: 39_000,
+    forks_count: 5_300,
+    open_issues_count: 800,
+    size: 60_000,
+    default_branch: 'trunk',
+    owner: { login: 'cli', avatar_url: user.avatar_url },
+    pushed_at: new Date(Date.now() - 3600_000 * 5).toISOString(),
+  },
+];
+
 const files = {
   'README.md': `# GitHub Flash
 
@@ -165,7 +229,7 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization,content-type,if-none-match,x-github-api-version',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
   'Access-Control-Expose-Headers':
-    'ETag,Link,Location,Retry-After,X-RateLimit-Limit,X-RateLimit-Remaining,X-RateLimit-Reset',
+    'ETag,Link,Location,Retry-After,X-RateLimit-Limit,X-RateLimit-Remaining,X-RateLimit-Reset,X-RateLimit-Resource',
 };
 
 const workUser = {
@@ -180,14 +244,15 @@ function userForToken(header) {
   return token.includes('work') ? workUser : user;
 }
 
-function send(res, status, body) {
+function send(res, status, body, extraHeaders = {}) {
   const payload = body === undefined ? '' : JSON.stringify(body);
   res.writeHead(status, {
     ...cors,
-    'Content-Type': 'application/json',
     'x-ratelimit-limit': '5000',
     'x-ratelimit-remaining': '4321',
     'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 3600),
+    ...extraHeaders,
+    'Content-Type': 'application/json',
   });
   res.end(payload);
 }
@@ -204,6 +269,42 @@ createServer((req, res) => {
 
   if (path === '/user') return send(res, 200, userForToken(req.headers.authorization));
   if (path === '/user/repos') return send(res, 200, repos);
+  if (path === '/search/repositories') {
+    const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+    const page = Math.max(1, Number.parseInt(url.searchParams.get('page') ?? '1', 10) || 1);
+    const perPage = Math.min(100, Math.max(1, Number.parseInt(url.searchParams.get('per_page') ?? '30', 10) || 30));
+    const terms = q.split(/\s+/).filter(Boolean);
+
+    const matches = publicRepos.filter((item) =>
+      terms.every((term) => {
+        if (term.startsWith('user:') || term.startsWith('org:')) {
+          return item.owner.login.toLowerCase() === term.slice(term.indexOf(':') + 1);
+        }
+        if (term.startsWith('language:')) {
+          return (item.language ?? '').toLowerCase() === term.slice('language:'.length);
+        }
+        if (term.startsWith('stars:>')) {
+          return item.stargazers_count > Number(term.slice('stars:>'.length));
+        }
+        return `${item.full_name} ${item.description ?? ''} ${item.language ?? ''}`
+          .toLowerCase()
+          .includes(term);
+      }),
+    );
+
+    const start = (page - 1) * perPage;
+    const items = matches.slice(start, start + perPage);
+    return send(
+      res,
+      200,
+      { total_count: matches.length, incomplete_results: false, items },
+      {
+        'x-ratelimit-resource': 'search',
+        'x-ratelimit-limit': '30',
+        'x-ratelimit-remaining': '29',
+      },
+    );
+  }
   if (/^\/repos\/[^/]+\/[^/]+\/readme$/.test(path)) {
     return send(res, 200, {
       type: 'file',
@@ -250,7 +351,13 @@ createServer((req, res) => {
   }
   if (/^\/repos\/[^/]+\/[^/]+\/commits\/[^/]+$/.test(path)) return send(res, 200, detail);
   if (/^\/repos\/[^/]+\/[^/]+\/commits$/.test(path)) return send(res, 200, commits);
-  if (/^\/repos\/[^/]+\/[^/]+$/.test(path)) return send(res, 200, repo);
+  if (/^\/repos\/[^/]+\/[^/]+$/.test(path)) {
+    const [, , owner, name] = path.split('/');
+    const match = [...repos, ...publicRepos].find(
+      (item) => item.full_name.toLowerCase() === `${owner}/${name}`.toLowerCase(),
+    );
+    return send(res, 200, match ?? repo);
+  }
   if (req.method === 'POST' && path === '/user/repos') {
     let body = '';
     req.on('data', (chunk) => (body += chunk));

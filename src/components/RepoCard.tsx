@@ -2,11 +2,19 @@ import { Link } from 'react-router-dom';
 import type { Repo } from '../lib/types';
 import { relativeTime } from '../lib/format';
 
-export default function RepoCard({ repo }: { repo: Repo }) {
+export default function RepoCard({ repo, showOwner = false }: { repo: Repo; showOwner?: boolean }) {
   return (
     <Link className="repo-card" to={`/r/${repo.owner.login}/${repo.name}`}>
       <div className="repo-card-head">
-        <span className="repo-name">{repo.name}</span>
+        <span className="repo-name">
+          {showOwner ? (
+            <>
+              <span className="repo-owner">{repo.owner.login}</span>
+              <span className="repo-sep">/</span>
+            </>
+          ) : null}
+          {repo.name}
+        </span>
         {repo.private ? <span className="badge badge-private">私有</span> : null}
         {repo.fork ? <span className="badge badge-muted">Fork</span> : null}
       </div>

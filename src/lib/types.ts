@@ -38,6 +38,12 @@ export interface TreeEntry {
   size?: number;
 }
 
+export interface RepoSearchResult {
+  total_count: number;
+  incomplete_results: boolean;
+  items: Repo[];
+}
+
 export interface TreeResponse {
   sha: string;
   tree: TreeEntry[];

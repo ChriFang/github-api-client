@@ -453,6 +453,80 @@ select.input {
   max-width: 420px;
 }
 
+/* ---------------- 仓库搜索 ---------------- */
+
+.search-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.search-input {
+  flex: 1;
+  max-width: 720px;
+}
+
+.search-examples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: -6px;
+}
+
+.search-example {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.search-example:hover {
+  border-color: var(--border-strong);
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.search-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.search-warning {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(210, 153, 34, 0.35);
+  border-radius: 8px;
+  background: rgba(210, 153, 34, 0.08);
+  color: var(--amber);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.search-cap {
+  margin: 0;
+  text-align: center;
+}
+
+.repo-owner {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.repo-sep {
+  margin: 0 2px;
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
 /* ---------------- 仓库卡片 ---------------- */
 
 .repo-grid {
@@ -1774,6 +1848,19 @@ select.input {
 
   .repo-title {
     font-size: 21px;
+  }
+
+  .search-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .search-input {
+    max-width: none;
+  }
+
+  .search-form .btn {
+    width: 100%;
   }
 
   .modal-backdrop {

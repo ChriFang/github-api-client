@@ -116,6 +116,9 @@ export default function Layout() {
             <NavLink to="/" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} end>
               仓库
             </NavLink>
+            <NavLink to="/search" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+              搜索
+            </NavLink>
             <NavLink to="/new" className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
               新建仓库
             </NavLink>

@@ -27,6 +27,12 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
           ? `配额将在 ${formatDate(new Date(error.resetAt).toISOString())} 重置。`
           : '请稍后再试。';
         break;
+      case 'search-limit':
+        title = '搜索配额已用完';
+        hint = error.resetAt
+          ? `Search API 限制为每分钟 30 次，配额将在 ${formatDate(new Date(error.resetAt).toISOString())} 重置。`
+          : 'Search API 限制为每分钟 30 次，请等一分钟再试。';
+        break;
       case 'secondary-limit':
         title = '请求过于频繁';
         hint = error.resetAt

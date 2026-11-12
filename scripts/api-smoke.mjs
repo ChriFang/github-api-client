@@ -43,6 +43,20 @@ const tree = await api.getTree('microsoft', 'vscode', repo.default_branch);
 const files = tree.data.tree.filter((entry) => entry.type === 'blob');
 log(`PASS 文件树: 共 ${tree.data.tree.length} 项, 文件 ${files.length} 个, truncated=${tree.data.truncated}`);
 
+try {
+  const found = await api.searchRepos('react in:name', 1, 3);
+  log(
+    `PASS 仓库搜索: total=${found.data.total_count}, 返回 ${found.data.items.length} 项, nextPage=${found.nextPage}, 首项=${found.data.items[0]?.full_name ?? '-'}`,
+  );
+} catch (error) {
+  // 搜索配额按出口 IP 计且只有 10 次/分钟，共享 IP 下可能被邻居耗尽；不让它拖垮其它冒烟项
+  if (error instanceof GitHubError && error.kind === 'search-limit') {
+    log('SKIP 仓库搜索: 未认证搜索配额已用完，稍后重试');
+  } else {
+    throw error;
+  }
+}
+
 const target = tree.data.tree.find((entry) => entry.type === 'blob' && entry.path === 'package.json');
 const file = await api.getContent('microsoft', 'vscode', target.path);
 const text = decodeContent(file);

@@ -1,6 +1,6 @@
 # GitHub Flash
 
-一个直接调用 `api.github.com` 的轻量 GitHub 客户端：浏览仓库、读取文件、打包下载、查看提交记录、创建仓库。
+一个直接调用 `api.github.com` 的轻量 GitHub 客户端：浏览仓库、读取文件、打包下载、搜索第三方仓库、查看提交记录、创建仓库。
 前端直连 GitHub REST API，**不经过任何第三方服务器**，也没有自建后端。
 
 ## 界面
@@ -8,6 +8,10 @@
 | 仓库列表 | 文件浏览与代码查看 |
 | --- | --- |
 | ![仓库列表](docs/screenshots/repos.png) | ![仓库详情](docs/screenshots/repo-code.png) |
+
+| 搜索第三方仓库 |
+| --- |
+| ![搜索仓库](docs/screenshots/search.png) |
 
 | 打包下载（浏览器端组 ZIP） |
 | --- |
@@ -58,10 +62,10 @@ VITE_API_BASE=http://127.0.0.1:8799 npm run dev  # 终端 B
 ## 测试
 
 ```bash
-npm run smoke        # 打包 API 层并真实请求 api.github.com，验证鉴权 / 分页 / ETag / diff
+npm run smoke        # 打包 API 层并真实请求 api.github.com，验证鉴权 / 分页 / ETag / diff / 搜索
 ```
 
-需要网络可达 `api.github.com`，会消耗少量未认证配额（约 7 次）。
+需要网络可达 `api.github.com`，会消耗少量未认证配额（约 8 次）。
 
 ```bash
 npm run archive-smoke   # 真实请求 api.github.com，验证 Blob 原始读取与 ZIP 组包
@@ -107,6 +111,7 @@ Token 存在浏览器 `localStorage`：`gh-flash:accounts`（账号数组）、`
 | --- | --- |
 | 仓库列表（分页 + 本地筛选） | `GET /user/repos` |
 | 仓库详情 | `GET /repos/{owner}/{repo}` |
+| 搜索第三方仓库 | `GET /search/repositories` |
 | 文件树 | `GET /repos/{owner}/{repo}/git/trees/{ref}?recursive=1` |
 | 文件内容 | `GET /repos/{owner}/{repo}/contents/{path}` |
 | 打包下载当前分支 | `GET /git/trees/{ref}` + 逐文件 `GET /git/blobs/{sha}`，浏览器端组 ZIP |
@@ -115,6 +120,19 @@ Token 存在浏览器 `localStorage`：`gh-flash:accounts`（账号数组）、`
 | 提交详情 + diff | `GET /repos/{owner}/{repo}/commits/{sha}` |
 | 仓库地址（HTTPS / SSH / gh CLI，一键复制） | 由 `full_name` 与 `html_url` 拼装，无需额外请求 |
 | 创建仓库 | `POST /user/repos` |
+
+## 搜索第三方仓库
+
+首页仍只加载"我的仓库"；顶栏「搜索」进入 `/search`，调用 GitHub Search API 搜索全站仓库（以及当前 Token 可访问的私有仓库）。
+
+- 输入至少 2 个字符，600ms 防抖后自动搜索，也可以按 Enter 立即搜索；
+- 支持 GitHub 原生限定词：`user:facebook`、`org:vercel`、`language:Go`、`stars:>10000`、`topic:react`、`in:name,description`；
+- 显示匹配总数，但 GitHub 最多只返回前 1000 条结果；
+- `incomplete_results` 为 true 时提示结果可能不完整；
+- 搜索配额独立：认证 30 次/分钟、未认证 10 次/分钟，不占用核心 5000 次/小时；顶栏只显示核心配额；
+- 私有第三方仓库是否出现取决于 Token 权限与搜索索引，不建议作为私仓浏览入口。
+
+搜索请求同样走 ETag 条件缓存；同一关键词重复搜索命中 304 时不消耗配额。
 
 ## 打包下载
 
@@ -139,17 +157,19 @@ Token 存在浏览器 `localStorage`：`gh-flash:accounts`（账号数组）、`
 
 - **ETag 条件请求缓存**：重复浏览返回 `304`，不消耗 API 配额，二级页几乎零延迟。
 - **配额可视化**：订阅 `x-ratelimit-*` 响应头，顶栏实时显示剩余额度；`403 + remaining=0` 会渲染成"配额用完"并给出重置时间。
-- **错误分类**：`GitHubError` 区分 `auth / rate-limit / secondary-limit / forbidden / not-found / validation / network`，每类有对应文案与操作建议。
+- **错误分类**：`GitHubError` 区分 `auth / rate-limit / search-limit / secondary-limit / forbidden / not-found / validation / network`，每类有对应文案与操作建议。
 - **自动重试**：网络错误与 5xx 退避重试 2 次；`401` 直接清理 Token 回到登录页，不做无意义重试。
 - **XSS 防护**：README 属于不可信输入，`marked` 渲染后再用 DOM 白名单清洗（去脚本、去 `on*`、限制 `javascript:` 协议）。
 - **大文件保护**：超过 4000 行 / 40 万字符不渲染，避免卡死页面。
 - **浏览器端 ZIP**：Tree + Blobs 按并发 6 流式组包，保留可执行位，图片/压缩包等已压缩格式直接 store；超过上限或文件树截断时拒绝下载。
+- **搜索防抖**：输入停 600ms 后才请求 Search API，`keepPreviousData` 避免结果区闪烁；搜索配额与核心配额分开，不污染顶栏显示。
 
 ## 已知限制
 
 - **不是 git 客户端**：不能 clone / push / merge；打包下载只是当前分支的文件快照，不含提交历史。真正传输代码请用 SSH（`git@github.com`，22 端口在本网络可用）。
 - **单文件上限**：Contents API 1MB，更大的需走 Blobs API（≤100MB）；打包下载时超过 100MB 的文件会被跳过；不支持 Git LFS。
 - **打包上限**：一次最多 3000 个文件 / 250MB，且每个文件消耗 1 次 API 配额；文件树截断时不允许打包。
+- **搜索上限**：Search API 认证 30 次/分钟，最多返回前 1000 条结果；搜索关键词至少 2 个字符。
 - **文件树上限**：`trees?recursive=1` 最多 10 万条目 / 7MB 响应，超大仓库会返回 `truncated: true`。
 - **未认证配额 60 次/小时且按出口 IP 计**，移动宽带 CGNAT 下会被邻居共享耗尽，因此必须登录。
 - **OAuth 登录不可用**：GitHub 的 OAuth/Device Flow 端点在 `github.com` 上，本网络无法访问，故采用 PAT。
@@ -176,5 +196,6 @@ src/
     Login.tsx
     Repos.tsx
     Repo.tsx
+    Search.tsx
     NewRepo.tsx
 ```
