@@ -116,7 +116,7 @@ Token 存在浏览器 `localStorage`：`gh-flash:accounts`（账号数组）、`
 | 仓库列表（分页 + 本地筛选） | `GET /user/repos` |
 | 仓库详情 | `GET /repos/{owner}/{repo}` |
 | 搜索第三方仓库 | `GET /search/repositories` |
-| 文件树 | `GET /repos/{owner}/{repo}/git/trees/{ref}?recursive=1` |
+| 文件树（按目录折叠、按需展开） | `GET /repos/{owner}/{repo}/git/trees/{ref}?recursive=1` |
 | 文件内容 | `GET /repos/{owner}/{repo}/contents/{path}` |
 | 打包下载当前分支 | `GET /git/trees/{ref}` + 逐文件 `GET /git/blobs/{sha}`，浏览器端组 ZIP |
 | README 渲染（相对图片/链接、emoji） | `GET /readme` + `GET /contents/{path}`（图片）+ `GET /emojis` |
@@ -180,6 +180,7 @@ README 里的相对路径按 README 所在目录解析：
 - **浏览器端 ZIP**：Tree + Blobs 按并发 6 流式组包，保留可执行位，图片/压缩包等已压缩格式直接 store；超过上限或文件树截断时拒绝下载。
 - **搜索防抖**：输入停 600ms 后才请求 Search API，`keepPreviousData` 避免结果区闪烁；搜索配额与核心配额分开，不污染顶栏显示。
 - **README 资源补全**：相对图片走 Contents API → blob URL，相对链接改写为 GitHub 页面，emoji 短码按需映射，绕开被阻断的 raw 域名。
+- **目录树浏览**：文件列表默认只展示根层，目录点击展开；单层超过 200 项时按需「显示更多」，深层路径自动展开到选中文件。
 
 ## 已知限制
 
