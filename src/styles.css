@@ -1569,6 +1569,25 @@ select.input {
   border-radius: 8px;
 }
 
+.markdown .emoji {
+  width: 1.15em;
+  height: 1.15em;
+  margin: 0 1px;
+  border-radius: 0;
+  vertical-align: -0.2em;
+}
+
+.markdown img.readme-image-pending {
+  min-width: 24px;
+  min-height: 24px;
+  border: 1px dashed var(--border);
+  background: var(--bg-soft);
+}
+
+.markdown img.readme-image-error {
+  opacity: 0.45;
+}
+
 .markdown pre {
   background: var(--bg-soft);
   border: 1px solid var(--border);

@@ -1,10 +1,10 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { decodeContent } from '../lib/api';
 import { formatBytes, relativeTime } from '../lib/format';
-import { renderMarkdown } from '../lib/markdown';
+import { applyEmojiTo, hydrateRepoImages, renderMarkdown } from '../lib/markdown';
 import FileBrowser from '../components/FileBrowser';
 import CommitList from '../components/CommitList';
 import RepoAddressMenu from '../components/RepoAddressMenu';
@@ -19,12 +19,48 @@ function ReadmeCard({ owner, repo, branch }: { owner: string; repo: string; bran
     staleTime: 5 * 60_000,
   });
 
+  const decoded = useMemo(
+    () => (readme.data ? decodeContent(readme.data) : ''),
+    [readme.data],
+  );
+  const readmePath = readme.data?.path ?? 'README.md';
+  const markdownRef = useRef<HTMLDivElement>(null);
+  const contextRef = useRef({ owner, repo, branch });
+  contextRef.current = { owner, repo, branch };
+
+  const emojiQuery = useQuery({
+    queryKey: ['github-emojis'],
+    queryFn: () => api.getEmojis(),
+    enabled: /:[a-z0-9_+-]+:/i.test(decoded),
+    staleTime: Infinity,
+    retry: 1,
+  });
+
   const html = useMemo(() => {
-    if (!readme.data) return null;
-    const decoded = decodeContent(readme.data);
     if (!decoded.trim()) return null;
-    return renderMarkdown(decoded);
-  }, [readme.data]);
+    return renderMarkdown(decoded, {
+      owner,
+      repo,
+      ref: branch,
+      path: readmePath,
+    });
+  }, [decoded, owner, repo, branch, readmePath]);
+
+  useEffect(() => {
+    const container = markdownRef.current;
+    if (!html || !container) return;
+    const context = contextRef.current;
+    return hydrateRepoImages(container, {
+      owner: context.owner,
+      repo: context.repo,
+      ref: context.branch,
+    });
+  }, [html]);
+
+  useEffect(() => {
+    if (!html || !markdownRef.current || !emojiQuery.data) return;
+    applyEmojiTo(markdownRef.current, emojiQuery.data);
+  }, [html, emojiQuery.data]);
 
   if (readme.isLoading) {
     return (
@@ -43,7 +79,7 @@ function ReadmeCard({ owner, repo, branch }: { owner: string; repo: string; bran
           README · <code>{readme.data?.name}</code>
         </span>
       </div>
-      <div className="markdown" dangerouslySetInnerHTML={{ __html: html }} />
+      <div className="markdown" ref={markdownRef} dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
 }

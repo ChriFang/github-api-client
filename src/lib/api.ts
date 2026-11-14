@@ -343,6 +343,28 @@ export const api = {
     return result.data;
   },
 
+  /** 读取 README 内引用的小图片（Contents API 原始二进制，避免 base64 膨胀） */
+  async getContentRaw(
+    owner: string,
+    repo: string,
+    path: string,
+    ref?: string,
+    signal?: AbortSignal,
+  ): Promise<Uint8Array> {
+    const suffix = ref ? `?ref=${encodeURIComponent(ref)}` : '';
+    const result = await request<Uint8Array>(
+      `/repos/${owner}/${repo}/contents/${encodePath(path)}${suffix}`,
+      { accept: 'application/vnd.github.raw', responseType: 'binary', signal },
+    );
+    return result.data;
+  },
+
+  /** GitHub 的 emoji 名称 → 图片地址映射，用于渲染 README 里的 :shortcode: */
+  async getEmojis(): Promise<Record<string, string>> {
+    const result = await request<Record<string, string>>('/emojis');
+    return result.data;
+  },
+
   listCommits(owner: string, repo: string, page: number, perPage = 30): Promise<Paged<CommitListItem[]>> {
     const query = new URLSearchParams({ per_page: String(perPage), page: String(page) });
     return request<CommitListItem[]>(`/repos/${owner}/${repo}/commits?${query.toString()}`);

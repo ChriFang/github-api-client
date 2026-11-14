@@ -131,7 +131,11 @@ const publicRepos = [
 const files = {
   'README.md': `# GitHub Flash
 
-一个直接调用 \`api.github.com\` 的轻量客户端。
+![README 里的截图](docs/screenshot.svg)
+
+一个直接调用 \`api.github.com\` 的轻量客户端。 :rocket: :sparkles:
+
+[架构说明](docs/architecture.md)
 
 ## 特性
 
@@ -166,6 +170,24 @@ const fileModes = {
   'scripts/deploy.sh': '100755',
 };
 
+const binaryFiles = {
+  'docs/screenshot.svg': Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="220" viewBox="0 0 640 220">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f6feb" />
+      <stop offset="1" stop-color="#3fb950" />
+    </linearGradient>
+  </defs>
+  <rect width="640" height="220" rx="16" fill="#0f151d" />
+  <rect x="16" y="16" width="608" height="188" rx="12" fill="url(#g)" opacity="0.9" />
+  <text x="320" y="108" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="30" fill="#ffffff" font-weight="700">README 图片加载成功</text>
+  <text x="320" y="144" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="16" fill="#e6edf3">相对路径 → Contents API → blob URL</text>
+</svg>`,
+    'utf8',
+  ),
+};
+
 const tree = Object.keys(files).map((path, index) => ({
   path,
   mode: fileModes[path] ?? '100644',
@@ -173,6 +195,9 @@ const tree = Object.keys(files).map((path, index) => ({
   sha: `sha${index}`,
   size: Buffer.byteLength(files[path]),
 }));
+Object.keys(binaryFiles).forEach((path, index) => {
+  tree.push({ path, mode: '100644', type: 'blob', sha: `bin${index}`, size: binaryFiles[path].length });
+});
 tree.push({ path: 'src', mode: '040000', type: 'tree', sha: 't1' });
 tree.push({ path: 'docs', mode: '040000', type: 'tree', sha: 't2' });
 
@@ -268,6 +293,12 @@ createServer((req, res) => {
   }
 
   if (path === '/user') return send(res, 200, userForToken(req.headers.authorization));
+  if (path === '/emojis') {
+    return send(res, 200, {
+      rocket: 'https://github.githubassets.com/images/icons/emoji/unicode/1f680.png?v8',
+      sparkles: 'https://github.githubassets.com/images/icons/emoji/unicode/2728.png?v8',
+    });
+  }
   if (path === '/user/repos') return send(res, 200, repos);
   if (path === '/search/repositories') {
     const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
@@ -323,7 +354,7 @@ createServer((req, res) => {
     const sha = path.split('/git/blobs/')[1];
     const entry = tree.find((item) => item.type === 'blob' && item.sha === sha);
     if (!entry) return send(res, 404, { message: 'Not Found' });
-    const content = Buffer.from(files[entry.path] ?? '', 'utf8');
+    const content = binaryFiles[entry.path] ?? Buffer.from(files[entry.path] ?? '', 'utf8');
     res.writeHead(200, {
       ...cors,
       'Content-Type': 'application/octet-stream',
@@ -337,6 +368,30 @@ createServer((req, res) => {
   }
   if (/^\/repos\/[^/]+\/[^/]+\/contents\//.test(path)) {
     const filePath = path.split('/contents/')[1] ?? '';
+    const binary = binaryFiles[filePath];
+    if (binary) {
+      if (!String(req.headers.accept ?? '').includes('raw')) {
+        return send(res, 200, {
+          type: 'file',
+          encoding: 'base64',
+          size: binary.length,
+          name: filePath.split('/').pop(),
+          path: filePath,
+          sha: 'bin',
+          content: binary.toString('base64'),
+        });
+      }
+      res.writeHead(200, {
+        ...cors,
+        'Content-Type': filePath.endsWith('.svg') ? 'image/svg+xml' : 'image/png',
+        'Content-Length': String(binary.length),
+        'x-ratelimit-limit': '5000',
+        'x-ratelimit-remaining': '4321',
+        'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 3600),
+      });
+      res.end(binary);
+      return;
+    }
     const content = files[filePath];
     if (content === undefined) return send(res, 404, { message: 'Not Found' });
     return send(res, 200, {

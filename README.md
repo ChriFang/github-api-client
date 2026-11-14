@@ -13,6 +13,10 @@
 | --- |
 | ![搜索仓库](docs/screenshots/search.png) |
 
+| README 图片与图标 |
+| --- |
+| ![README 渲染](docs/screenshots/readme.png) |
+
 | 打包下载（浏览器端组 ZIP） |
 | --- |
 | ![打包下载](docs/screenshots/archive.png) |
@@ -115,7 +119,7 @@ Token 存在浏览器 `localStorage`：`gh-flash:accounts`（账号数组）、`
 | 文件树 | `GET /repos/{owner}/{repo}/git/trees/{ref}?recursive=1` |
 | 文件内容 | `GET /repos/{owner}/{repo}/contents/{path}` |
 | 打包下载当前分支 | `GET /git/trees/{ref}` + 逐文件 `GET /git/blobs/{sha}`，浏览器端组 ZIP |
-| README 渲染 | `GET /repos/{owner}/{repo}/readme` |
+| README 渲染（相对图片/链接、emoji） | `GET /readme` + `GET /contents/{path}`（图片）+ `GET /emojis` |
 | 提交列表（分页） | `GET /repos/{owner}/{repo}/commits` |
 | 提交详情 + diff | `GET /repos/{owner}/{repo}/commits/{sha}` |
 | 仓库地址（HTTPS / SSH / gh CLI，一键复制） | 由 `full_name` 与 `html_url` 拼装，无需额外请求 |
@@ -133,6 +137,18 @@ Token 存在浏览器 `localStorage`：`gh-flash:accounts`（账号数组）、`
 - 私有第三方仓库是否出现取决于 Token 权限与搜索索引，不建议作为私仓浏览入口。
 
 搜索请求同样走 ETag 条件缓存；同一关键词重复搜索命中 304 时不消耗配额。
+
+## README 渲染
+
+README 里的相对路径按 README 所在目录解析：
+
+- 仓库内图片通过 Contents API 以原始二进制取回，再替换成浏览器 blob URL。这样不依赖 `raw.githubusercontent.com`（目标网络里经常不可达），私有仓库的图片也能带着 Token 正常加载；
+- 相对链接改写成 GitHub 的 blob 页面链接，避免点到本站 404；
+- `:rocket:`、`:sparkles:` 等 GitHub emoji 短码通过 `GET /emojis` 映射成图标（仅当 README 含短码时才请求，并缓存）；
+- shields.io、githubassets 等外链图片保持原样，由浏览器直接加载；
+- `<picture>` 内的相对 `<source>` 会回退到 `<img>`，统一走 API 加载。
+
+限制：Contents API 单张图片上限 1MB，超过时会自动回退到 Blobs API（≤100MB）；再大的图片会显示失败。外链图床需要自身可达。
 
 ## 打包下载
 
@@ -163,6 +179,7 @@ Token 存在浏览器 `localStorage`：`gh-flash:accounts`（账号数组）、`
 - **大文件保护**：超过 4000 行 / 40 万字符不渲染，避免卡死页面。
 - **浏览器端 ZIP**：Tree + Blobs 按并发 6 流式组包，保留可执行位，图片/压缩包等已压缩格式直接 store；超过上限或文件树截断时拒绝下载。
 - **搜索防抖**：输入停 600ms 后才请求 Search API，`keepPreviousData` 避免结果区闪烁；搜索配额与核心配额分开，不污染顶栏显示。
+- **README 资源补全**：相对图片走 Contents API → blob URL，相对链接改写为 GitHub 页面，emoji 短码按需映射，绕开被阻断的 raw 域名。
 
 ## 已知限制
 
@@ -170,6 +187,7 @@ Token 存在浏览器 `localStorage`：`gh-flash:accounts`（账号数组）、`
 - **单文件上限**：Contents API 1MB，更大的需走 Blobs API（≤100MB）；打包下载时超过 100MB 的文件会被跳过；不支持 Git LFS。
 - **打包上限**：一次最多 3000 个文件 / 250MB，且每个文件消耗 1 次 API 配额；文件树截断时不允许打包。
 - **搜索上限**：Search API 认证 30 次/分钟，最多返回前 1000 条结果；搜索关键词至少 2 个字符。
+- **README 图片**：仓库内图片经 Contents API 加载，超过 1MB 自动回退到 Blobs API（≤100MB）；更大的图片暂不显示。外链图片需要对应图床可达。
 - **文件树上限**：`trees?recursive=1` 最多 10 万条目 / 7MB 响应，超大仓库会返回 `truncated: true`。
 - **未认证配额 60 次/小时且按出口 IP 计**，移动宽带 CGNAT 下会被邻居共享耗尽，因此必须登录。
 - **OAuth 登录不可用**：GitHub 的 OAuth/Device Flow 端点在 `github.com` 上，本网络无法访问，故采用 PAT。
@@ -182,7 +200,7 @@ src/
     api.ts        # 请求核心：鉴权、ETag、重试、限流、错误分类、分页
     archive.ts    # 打包下载：文件树规划、并发拉取 Blob、fflate 组 ZIP
     auth.tsx      # Token 上下文与登录状态
-    markdown.ts   # README 渲染 + 清洗
+    markdown.ts   # README 渲染 + 清洗 + 相对图片/链接补全 + emoji
     format.ts     # 时间 / 体积 / sha 格式化
     types.ts      # GitHub REST 响应类型
   components/
